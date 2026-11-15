@@ -53,14 +53,17 @@ Kotlin + Jetpack Compose 编写，通过 SPlayer 内置的外部 HTTP API 通信
 > 外部 API 官方文档明确说明「不含任何鉴权」，所以只应在可信局域网中使用。
 > 开启局域网访问后，同网段的任何人都能控制你的播放器。
 
+## 下载
+
+[最新发行版](https://github.com/smalleroro/splayer-remote-android/releases/latest) / [v1.1.0 APK](https://github.com/smalleroro/splayer-remote-android/releases/download/v1.1.0/splayer-remote-1.1.0.apk)
+
 ## 使用
 
-1. 安装 APK
-2. 打开应用，点右上角齿轮进设置
-3. 展开设置页后填服务器地址：`http://<电脑内网IP>:14558`
-4. 或点「自动发现」扫描局域网
+1. 安装 APK，手机与电脑连同一个 Wi-Fi
+2. 打开应用，**会自动搜索同网段的 SPlayer**（默认开启，约 30 秒内连上）
+3. 连不上时点右上角齿轮进设置，直接填 `http://<电脑内网IP>:14558`，或点「自动发现」
 
-地址会记住，下次直接进。
+地址会记住，下次直接进。地址写错也不要紧，下次连不上会自动重新扫描并改回来。
 
 ## 构建
 
