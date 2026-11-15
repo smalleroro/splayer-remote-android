@@ -115,7 +115,6 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## 相关
 
-- 配套插件：[dsh-remote-bridge](https://github.com/smalleroro/dev-mods) — 给 SPlayer 加右键菜单（立即播放、插到下一首、搜索播放等）
 - SPlayer-Next：[SPlayer-Dev/SPlayer-Next](https://github.com/SPlayer-Dev/SPlayer-Next)（AGPL-3.0）
 
 ## 许可
