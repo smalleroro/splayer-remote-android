@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import top.dsh.splayerremote.data.AppSettings
 import top.dsh.splayerremote.data.CoverSize
 import top.dsh.splayerremote.data.LyricFontSize
+import top.dsh.splayerremote.data.ProgressStyle
+import top.dsh.splayerremote.ui.components.SeekBar
 import top.dsh.splayerremote.data.ThemeMode
 import top.dsh.splayerremote.domain.PollPolicy
 
@@ -178,6 +182,11 @@ fun SettingsScreen(
                 ),
                 selected = settings.coverSize,
                 onSelect = { v -> onUpdate { it.copy(coverSize = v) } },
+            )
+
+            ProgressStyleRow(
+                selected = settings.progressStyle,
+                onSelect = { v -> onUpdate { it.copy(progressStyle = v) } },
             )
 
             SectionTitle("歌词")
@@ -372,6 +381,7 @@ private fun ActionRow(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun <T> OptionRow(
     title: String,
@@ -382,7 +392,10 @@ private fun <T> OptionRow(
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(text = title, style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             options.forEach { (value, label) ->
                 val isSelected = value == selected
                 Box(
@@ -441,3 +454,85 @@ private fun SliderRow(
         )
     }
 }
+
+/**
+ * 进度条样式选择。
+ *
+ * 光看名字猜不出长什么样，所以上面放一条实时预览：用的就是真实组件，
+ * 播放状态下的动效也能直接看到。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProgressStyleRow(
+    selected: ProgressStyle,
+    onSelect: (ProgressStyle) -> Unit,
+) {
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "进度条样式", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = selected.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        SeekBar(
+            progress = 0.62f,
+            style = selected,
+            animate = true,
+            seed = 7,
+            onSeekStart = {},
+            onSeekChange = {},
+            onSeekCommit = {},
+            enabled = false,
+            activeColor = MaterialTheme.colorScheme.primary,
+            inactiveColor = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.padding(horizontal = 2.dp),
+        )
+        Spacer(Modifier.height(6.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ProgressStyle.entries.forEach { style ->
+                val isSelected = style == selected
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (isSelected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            }
+                        )
+                        .clickable { onSelect(style) }
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                ) {
+                    Text(
+                        text = style.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private val ProgressStyle.label: String
+    get() = when (this) {
+        ProgressStyle.Wavy -> "流动"
+        ProgressStyle.Expressive -> "M3"
+        ProgressStyle.Classic -> "经典"
+        ProgressStyle.Thin -> "细线"
+        ProgressStyle.Segment -> "分段"
+        ProgressStyle.Waveform -> "波形"
+    }

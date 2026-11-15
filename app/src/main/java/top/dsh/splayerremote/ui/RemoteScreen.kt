@@ -130,6 +130,10 @@ fun RemoteScreen(
         ProgressRow(
             durationMs = state.status?.value?.duration ?: 0L,
             positionState = positionState,
+            style = settings.progressStyle,
+            isPlaying = state.status?.value?.isPlaying == true,
+            // 同一首歌波形固定：用「标题+歌手」喂种子，换歌才换形
+            seed = (state.track?.id ?: "").hashCode(),
             onSeekStart = {
                 isSeeking = true
                 seekPreview = positionState.value
@@ -157,6 +161,7 @@ fun RemoteScreen(
         VolumeRow(
             volume = state.volume,
             enabled = state.connection == Connection.Connected,
+            style = settings.progressStyle,
             onChange = onVolumeChange,
         )
 

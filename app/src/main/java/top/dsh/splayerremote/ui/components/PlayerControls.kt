@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -26,38 +24,45 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import top.dsh.splayerremote.data.ProgressStyle
 import top.dsh.splayerremote.domain.formatTime
 import top.dsh.splayerremote.ui.Glyph
 import top.dsh.splayerremote.ui.VectorIcon
 
-/** 进度：位置从 State 里读，避免外层缓存导致进度条不动 */
+/**
+ * 进度：位置从 State 里读，避免外层缓存导致进度条不动。
+ *
+ * 用自绘 SeekBar 而不是 Material Slider——样式由设置决定，见 [ProgressStyle]。
+ */
 @Composable
 fun ProgressRow(
     durationMs: Long,
     positionState: State<Long>,
+    style: ProgressStyle,
+    isPlaying: Boolean,
+    seed: Int,
     onSeekStart: () -> Unit,
     onSeekChange: (Long) -> Unit,
     onSeekCommit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val position by positionState
-    val max = durationMs.coerceAtLeast(1L).toFloat()
+    val safeDuration = durationMs.coerceAtLeast(1L)
+    val fraction = (position.coerceIn(0L, durationMs.coerceAtLeast(0L)).toFloat() / safeDuration)
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Slider(
-            value = position.coerceIn(0L, durationMs.coerceAtLeast(0L)).toFloat(),
-            onValueChange = {
-                onSeekStart()
-                onSeekChange(it.toLong())
-            },
-            onValueChangeFinished = onSeekCommit,
-            valueRange = 0f..max,
+        SeekBar(
+            progress = fraction,
+            style = style,
+            // 暂停时只把波浪摊平，其它样式不做动画
+            animate = isPlaying,
+            seed = seed,
+            onSeekStart = onSeekStart,
+            onSeekChange = { onSeekChange((it * safeDuration).toLong()) },
+            onSeekCommit = onSeekCommit,
             enabled = durationMs > 0,
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-            ),
+            activeColor = MaterialTheme.colorScheme.primary,
+            inactiveColor = MaterialTheme.colorScheme.surfaceVariant,
         )
         Row(
             modifier = Modifier
@@ -146,11 +151,17 @@ fun TransportRow(
 fun VolumeRow(
     volume: Float,
     enabled: Boolean,
+    style: ProgressStyle,
     onChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var dragging by remember { mutableFloatStateOf(-1f) }
     val shown = if (dragging >= 0f) dragging else volume
+    // 音量条不跟着波形跳动，用静态简版：波形柱与波浪都退化成细线
+    val styleForVolume = when (style) {
+        ProgressStyle.Waveform, ProgressStyle.Segment -> ProgressStyle.Thin
+        else -> style
+    }
 
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier.fillMaxWidth()) {
         VectorIcon(
@@ -158,23 +169,23 @@ fun VolumeRow(
             size = 16.dp,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Slider(
-            value = shown.coerceIn(0f, 1f),
-            onValueChange = {
+        SeekBar(
+            progress = shown.coerceIn(0f, 1f),
+            style = styleForVolume,
+            animate = false,
+            onSeekStart = { dragging = shown },
+            onSeekChange = {
                 dragging = it
                 onChange(it)
             },
-            onValueChangeFinished = { dragging = -1f },
+            onSeekCommit = { dragging = -1f },
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = 4.dp),
-            valueRange = 0f..1f,
             enabled = enabled,
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-            ),
+            activeColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+            inactiveColor = MaterialTheme.colorScheme.surfaceVariant,
+            touchHeight = 36.dp,
         )
         VectorIcon(
             icon = Glyph.VolumeHigh,

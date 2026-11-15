@@ -16,6 +16,32 @@ enum class LyricFontSize { Small, Medium, Large }
 enum class CoverSize { Small, Medium, Large }
 
 /**
+ * 进度条外观。
+ *
+ * 用自绘代替 Material Slider：Slider 的滑块形状与轨道粗细写死在组件里，
+ * 想「让用户自己挑」只能自己画。
+ */
+enum class ProgressStyle {
+    /** 流动波浪，形如一个「～」，播放时向前涌 */
+    Wavy,
+
+    /** M3 新版：粗轨 + 缝隙 + 竖直头部 */
+    Expressive,
+
+    /** 经典圆点滑块 */
+    Classic,
+
+    /** 细线，尾部小圆点 */
+    Thin,
+
+    /** 分段格子 */
+    Segment,
+
+    /** 音频波形柱 */
+    Waveform,
+}
+
+/**
  * 应用设置快照。
  *
  * 全部是不可变值，界面直接读这个对象；改设置时整体替换，
@@ -34,6 +60,8 @@ data class AppSettings(
     // 外观
     val themeMode: ThemeMode = ThemeMode.System,
     val coverSize: CoverSize = CoverSize.Medium,
+    /** 进度条样式；默认流动波浪 */
+    val progressStyle: ProgressStyle = ProgressStyle.Wavy,
 
     // 歌词
     val showTranslation: Boolean = true,
@@ -79,6 +107,8 @@ class SettingsRepository(context: Context) {
             ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.System,
         coverSize = prefs.getString(KEY_COVER_SIZE, CoverSize.Medium.name)
             ?.let { runCatching { CoverSize.valueOf(it) }.getOrNull() } ?: CoverSize.Medium,
+        progressStyle = prefs.getString(KEY_PROGRESS_STYLE, ProgressStyle.Wavy.name)
+            ?.let { runCatching { ProgressStyle.valueOf(it) }.getOrNull() } ?: ProgressStyle.Wavy,
         showTranslation = prefs.getBoolean(KEY_SHOW_TRANSLATION, true),
         lyricFontSize = prefs.getString(KEY_LYRIC_FONT, LyricFontSize.Medium.name)
             ?.let { runCatching { LyricFontSize.valueOf(it) }.getOrNull() } ?: LyricFontSize.Medium,
@@ -98,6 +128,7 @@ class SettingsRepository(context: Context) {
             .putBoolean(KEY_AUTO_DISCOVER, next.autoDiscover)
             .putString(KEY_THEME, next.themeMode.name)
             .putString(KEY_COVER_SIZE, next.coverSize.name)
+            .putString(KEY_PROGRESS_STYLE, next.progressStyle.name)
             .putBoolean(KEY_SHOW_TRANSLATION, next.showTranslation)
             .putString(KEY_LYRIC_FONT, next.lyricFontSize.name)
             .putBoolean(KEY_AUTO_SCROLL, next.autoScrollLyrics)
@@ -125,6 +156,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_AUTO_DISCOVER = "auto_discover"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_COVER_SIZE = "cover_size"
+        private const val KEY_PROGRESS_STYLE = "progress_style"
         private const val KEY_SHOW_TRANSLATION = "show_translation"
         private const val KEY_LYRIC_FONT = "lyric_font_size"
         private const val KEY_AUTO_SCROLL = "auto_scroll_lyrics"
