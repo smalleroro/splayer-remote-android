@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -88,72 +89,67 @@ private fun DrawScope.drawPause(color: Color) {
         color = color,
         topLeft = Offset(px(7f), px(5f)),
         size = Size(barW, px(14f)),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r),
+        cornerRadius = CornerRadius(r, r),
     )
     drawRoundRect(
         color = color,
         topLeft = Offset(px(14f), px(5f)),
         size = Size(barW, px(14f)),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r),
+        cornerRadius = CornerRadius(r, r),
     )
 }
 
 /** 停止：圆角方形 */
 private fun DrawScope.drawStop(color: Color) {
-    val side = px(13f)
-    val r = px(2.5f)
     drawRoundRect(
         color = color,
         topLeft = Offset(px(5.5f), px(5.5f)),
-        size = Size(side, side),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r),
+        size = Size(px(13f), px(13f)),
+        cornerRadius = CornerRadius(px(2.5f), px(2.5f)),
     )
 }
 
 /** 上/下一首：双三角 + 竖线 */
 private fun DrawScope.drawSkip(color: Color, forward: Boolean) {
     val barW = px(3f)
+    val barR = CornerRadius(px(1f), px(1f))
     if (forward) {
-        val tri = Path().apply {
-            moveTo(px(4f), px(6f))
-            lineTo(px(13f), px(12f))
-            lineTo(px(4f), px(18f))
-            close()
-        }
-        val tri2 = Path().apply {
-            moveTo(px(11f), px(6f))
-            lineTo(px(20f), px(12f))
-            lineTo(px(11f), px(18f))
-            close()
-        }
-        drawPath(tri, color)
-        drawPath(tri2, color)
+        drawPath(
+            Path().apply {
+                moveTo(px(4f), px(6f)); lineTo(px(13f), px(12f)); lineTo(px(4f), px(18f)); close()
+            },
+            color,
+        )
+        drawPath(
+            Path().apply {
+                moveTo(px(11f), px(6f)); lineTo(px(20f), px(12f)); lineTo(px(11f), px(18f)); close()
+            },
+            color,
+        )
         drawRoundRect(
             color = color,
             topLeft = Offset(px(18f), px(6f)),
             size = Size(barW, px(12f)),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(px(1f), px(1f)),
+            cornerRadius = barR,
         )
     } else {
-        val tri = Path().apply {
-            moveTo(px(20f), px(6f))
-            lineTo(px(11f), px(12f))
-            lineTo(px(20f), px(18f))
-            close()
-        }
-        val tri2 = Path().apply {
-            moveTo(px(13f), px(6f))
-            lineTo(px(4f), px(12f))
-            lineTo(px(13f), px(18f))
-            close()
-        }
-        drawPath(tri, color)
-        drawPath(tri2, color)
+        drawPath(
+            Path().apply {
+                moveTo(px(20f), px(6f)); lineTo(px(11f), px(12f)); lineTo(px(20f), px(18f)); close()
+            },
+            color,
+        )
+        drawPath(
+            Path().apply {
+                moveTo(px(13f), px(6f)); lineTo(px(4f), px(12f)); lineTo(px(13f), px(18f)); close()
+            },
+            color,
+        )
         drawRoundRect(
             color = color,
             topLeft = Offset(px(3f), px(6f)),
             size = Size(barW, px(12f)),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(px(1f), px(1f)),
+            cornerRadius = barR,
         )
     }
 }
@@ -174,13 +170,12 @@ private fun DrawScope.drawVolume(color: Color, waves: Int) {
     val strokeW = px(1.8f)
     repeat(waves) { index ->
         val radius = px(4f + index * 4f)
-        val center = Offset(px(12f), px(12f))
         drawArc(
             color = color,
             startAngle = -50f,
             sweepAngle = 100f,
             useCenter = false,
-            topLeft = Offset(center.x - radius, center.y - radius),
+            topLeft = Offset(px(12f) - radius, px(12f) - radius),
             size = Size(radius * 2, radius * 2),
             style = Stroke(width = strokeW, cap = StrokeCap.Round),
         )
@@ -189,18 +184,20 @@ private fun DrawScope.drawVolume(color: Color, waves: Int) {
 
 /** 音符：一个带符干的椭圆 */
 private fun DrawScope.drawMusic(color: Color) {
-    val noteHead = Size(px(7f), px(5.5f))
     drawOval(
         color = color,
         topLeft = Offset(px(6f), px(14f)),
-        size = noteHead,
+        size = Size(px(7f), px(5.5f)),
     )
-    val stem = Path().apply {
-        moveTo(px(12.5f), px(16f))
-        lineTo(px(12.5f), px(4f))
-        lineTo(px(19f), px(6f))
-    }
-    drawPath(stem, color, style = Stroke(width = px(2f), cap = StrokeCap.Round))
+    drawPath(
+        Path().apply {
+            moveTo(px(12.5f), px(16f))
+            lineTo(px(12.5f), px(4f))
+            lineTo(px(19f), px(6f))
+        },
+        color,
+        style = Stroke(width = px(2f), cap = StrokeCap.Round),
+    )
 }
 
 /** 链环：服务器连接 */
@@ -233,17 +230,12 @@ private fun DrawScope.drawLink(color: Color) {
     )
 }
 
-/** 自动发现：放大镜 + 波纹 */
+/** 自动发现：放大镜 + 内部弧 */
 private fun DrawScope.drawAutoFind(color: Color) {
     val w = px(2f)
     val r = px(6f)
     val center = Offset(px(11f), px(11f))
-    drawCircle(
-        color = color,
-        radius = r,
-        center = center,
-        style = Stroke(width = w),
-    )
+    drawCircle(color = color, radius = r, center = center, style = Stroke(width = w))
     drawLine(
         color = color,
         start = Offset(px(15.5f), px(15.5f)),

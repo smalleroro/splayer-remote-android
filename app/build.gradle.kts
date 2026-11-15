@@ -29,8 +29,8 @@ android {
         applicationId = "top.dsh.splayerremote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     signingConfigs {
@@ -96,6 +96,12 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     // 专辑封面加载。Coil 走 OkHttp，和项目已有依赖共用一套网络栈。
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // 单元测试：纯 JVM，不依赖模拟器
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // 用 MockWebServer 打桩 HTTP，验证真实客户端的解析与错误分层
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

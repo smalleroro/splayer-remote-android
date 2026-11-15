@@ -22,42 +22,47 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
+import top.dsh.splayerremote.data.ThemeMode
 import top.dsh.splayerremote.ui.RemoteScreen
 import top.dsh.splayerremote.ui.SettingsScreen
-import top.dsh.splayerremote.ui.RemoteViewModel
-import top.dsh.splayerremote.data.ThemeMode
 
 class MainActivity : ComponentActivity() {
 
-    /** Android 13+ 需要运行时申请通知权限，否则常驻通知不显示 */
+    private lateinit var session: SessionRepository
+
+    /** 是否已申请过通知权限，避免每次回前台都弹 */
+    private var permissionAsked = false
+
+    /** 前台服务当前是否在跑，供设置页显示按钮状态 */
+    private var serviceRunning by mutableStateOf(false)
+
     private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) {
-                RemoteService.start(this)
-            }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
+            permissionAsked = true
+            // 无论授予与否都要起服务：服务本身能跑，只是通知不可见。
+            // 之前被拒就不启动，导致"常驻控制"直接消失且没有任何提示。
+            startServiceIfEnabled()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        ensureNotificationPermissionAndStartService()
+        session = applicationContext.session
+
+        ensureNotificationPermission()
 
         setContent {
-            // Material You：Android 12+ 跟随壁纸取色，低版本回退到内置配色
-            val darkTheme = isSystemInDarkTheme()
-            val context = LocalContext.current
-            val vm: RemoteViewModel = viewModel()
-            val settings by vm.settingsRepo.settings.collectAsState()
+            val settings by session.settings.settings.collectAsState()
+            val state by session.state.collectAsState()
 
-            // 主题跟随用户设置，而不是只看系统
+            val darkTheme = isSystemInDarkTheme()
             val useDark = when (settings.themeMode) {
                 ThemeMode.System -> darkTheme
                 ThemeMode.Dark -> true
                 ThemeMode.Light -> false
             }
-
+            val context = LocalContext.current
             val colorScheme = when {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
                     if (useDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -70,34 +75,37 @@ class MainActivity : ComponentActivity() {
 
             MaterialTheme(colorScheme = colorScheme) {
                 Surface {
-                    val vm: RemoteViewModel = viewModel()
-                    val state by vm.ui.collectAsState()
-                    val settings by vm.settingsRepo.settings.collectAsState()
-
                     if (showSettings) {
                         SettingsScreen(
                             settings = settings,
-                            onUpdate = vm::updateSettings,
+                            onUpdate = { transform -> session.settings.update(transform) },
+                            onApplyBaseUrl = { session.setBaseUrl(it) },
                             onBack = { showSettings = false },
-                            onDiscover = vm::discoverServer,
+                            onDiscover = { session.discover() },
                             isDiscovering = state.discovering,
+                            serviceRunning = serviceRunning,
+                            onStopService = {
+                                RemoteService.stop(this)
+                                serviceRunning = false
+                                // 停掉服务等于关掉常驻通知，设置里同步反映
+                                session.settings.update { it.copy(persistentNotification = false) }
+                            },
+                            notificationPermissionGranted = hasNotificationPermission(),
                         )
                     } else {
                         RemoteScreen(
                             state = state,
-                            onBaseUrlChange = vm::updateBaseUrl,
-                            onReconnect = vm::connect,
-                            onTogglePlayPause = vm::togglePlayPause,
-                            onNext = vm::next,
-                            onPrev = vm::prev,
-                            onStop = vm::stop,
-                            onVolumeChange = vm::setVolume,
-                            onSeekStart = vm::onSeekStart,
-                            onSeekChange = vm::onSeekChange,
-                            onSeekCommit = vm::onSeekCommit,
-                            onToggleLyrics = vm::toggleLyrics,
                             settings = settings,
+                            onReconnect = { session.reconnect() },
                             onOpenSettings = { showSettings = true },
+                            onTogglePlayPause = { session.togglePlayPause() },
+                            onNext = { session.next() },
+                            onPrev = { session.prev() },
+                            onStop = { session.stopPlayback() },
+                            onVolumeChange = { session.setVolume(it) },
+                            onSeek = { session.seekTo(it) },
+                            onLoadQueueIndex = { session.ensureQueueLoaded(it) },
+                            onConsumeMessage = { session.consumeMessage() },
                         )
                     }
                 }
@@ -105,24 +113,52 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * 拉起常驻通知服务。
-     *
-     * Android 13 起 POST_NOTIFICATIONS 是运行时权限，没拿到的话
-     * 前台服务依然能跑，但通知不会显示——用户会觉得"常驻控制没了"，
-     * 所以这里主动申请一次。
-     */
-    private fun ensureNotificationPermissionAndStartService() {
-        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+    override fun onStart() {
+        super.onStart()
+        session.setForeground(true)
+        session.acquire()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        session.setForeground(false)
+        session.release()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // 仅在用户主动退出（而非配置变更重建）时执行
+        if (isFinishing && session.settings.current.stopServiceOnExit) {
+            RemoteService.stop(this)
+        }
+    }
+
+    // ---------------------------------------------------------------- 通知权限与服务
+
+    private fun hasNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.POST_NOTIFICATIONS,
-            ) != PackageManager.PERMISSION_GRANTED
+            ) == PackageManager.PERMISSION_GRANTED
 
-        if (needsPermission) {
+    private fun ensureNotificationPermission() {
+        if (hasNotificationPermission()) {
+            startServiceIfEnabled()
+            return
+        }
+        if (!permissionAsked) {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
+            startServiceIfEnabled()
+        }
+    }
+
+    /** 用户开着「常驻通知」就拉起服务；关着就不拉 */
+    private fun startServiceIfEnabled() {
+        if (session.settings.current.persistentNotification) {
             RemoteService.start(this)
+            serviceRunning = true
         }
     }
 }

@@ -1,8 +1,10 @@
 package top.dsh.splayerremote.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,22 +39,33 @@ import top.dsh.splayerremote.data.AppSettings
 import top.dsh.splayerremote.data.CoverSize
 import top.dsh.splayerremote.data.LyricFontSize
 import top.dsh.splayerremote.data.ThemeMode
+import top.dsh.splayerremote.domain.PollPolicy
 
 /**
  * 设置页。
  *
- * 分五组：连接 / 外观 / 歌词 / 通知 / 行为。
  * 每一项改动立刻生效并写盘，没有"保存"按钮——遥控器这种工具，
  * 用户改完就想看到效果，多一步确认反而烦。
+ *
+ * 与上一版的关键差别：**这里出现的开关都真的接线了**。
+ * 常驻通知控制前台服务去留，通知封面控制通知是否带图，
+ * 退出停服务控制 Activity 结束时是否收掉服务。
  */
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
     onUpdate: ((AppSettings) -> AppSettings) -> Unit,
+    onApplyBaseUrl: (String) -> Unit,
     onBack: () -> Unit,
     onDiscover: () -> Unit,
     isDiscovering: Boolean,
+    serviceRunning: Boolean,
+    onStopService: () -> Unit,
+    notificationPermissionGranted: Boolean,
 ) {
+    // 设置页也要响应返回键，否则只能点左上角
+    BackHandler(onBack = onBack)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -60,16 +73,13 @@ fun SettingsScreen(
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        // 顶栏
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onBack) {
-                Text("返回", style = MaterialTheme.typography.labelLarge)
-            }
+            TextButton(onClick = onBack) { Text("返回") }
             Spacer(Modifier.weight(1f))
             Text(
                 text = "设置",
@@ -77,7 +87,6 @@ fun SettingsScreen(
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.weight(1f))
-            // 占位，让标题居中
             Spacer(Modifier.width(64.dp))
         }
 
@@ -87,11 +96,18 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
+            if (!notificationPermissionGranted) {
+                NoticeCard(
+                    text = "通知权限未授予：常驻控制不可见，锁屏也无法操作。" +
+                        "可在系统设置 → 应用 → SPlayer 遥控 → 通知 中开启。",
+                )
+            }
+
             SectionTitle("连接")
 
             ServerField(
                 current = settings.baseUrl,
-                onApply = { url -> onUpdate { it.copy(baseUrl = url) } },
+                onApply = onApplyBaseUrl,
             )
 
             ActionRow(
@@ -110,7 +126,7 @@ fun SettingsScreen(
 
             SwitchRow(
                 title = "找不到时自动扫描",
-                subtitle = "连接失败后自动在局域网里找 SPlayer",
+                subtitle = "连续连不上时，每 30 秒扫一次局域网",
                 checked = settings.autoDiscover,
                 onCheckedChange = { v -> onUpdate { it.copy(autoDiscover = v) } },
             )
@@ -119,13 +135,25 @@ fun SettingsScreen(
                 title = "刷新间隔",
                 valueText = "${settings.pollIntervalMs} ms",
                 value = settings.pollIntervalMs.toFloat(),
-                range = 500f..5000f,
+                range = PollPolicy.MIN_INTERVAL_MS.toFloat()..PollPolicy.MAX_INTERVAL_MS.toFloat(),
                 steps = 8,
                 onChange = { v ->
-                    // 归整到 500ms 的倍数，避免出现 1234ms 这种无意义值
                     val rounded = (v / 500f).toInt() * 500L
-                    onUpdate { it.copy(pollIntervalMs = rounded.coerceIn(500L, 5000L)) }
+                    onUpdate {
+                        it.copy(
+                            pollIntervalMs = rounded.coerceIn(
+                                PollPolicy.MIN_INTERVAL_MS,
+                                PollPolicy.MAX_INTERVAL_MS,
+                            )
+                        )
+                    }
                 },
+            )
+            Text(
+                text = "暂停或退到后台时会自动放宽，省电优先。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp),
             )
 
             SectionTitle("外观")
@@ -183,7 +211,7 @@ fun SettingsScreen(
 
             SwitchRow(
                 title = "常驻通知",
-                subtitle = "后台保持控制，锁屏也能暂停切歌",
+                subtitle = "后台保持控制，锁屏也能暂停切歌；关掉后只在应用前台时连接",
                 checked = settings.persistentNotification,
                 onCheckedChange = { v -> onUpdate { it.copy(persistentNotification = v) } },
             )
@@ -193,6 +221,17 @@ fun SettingsScreen(
                 subtitle = "在通知里显示专辑封面",
                 checked = settings.notificationCover,
                 onCheckedChange = { v -> onUpdate { it.copy(notificationCover = v) } },
+            )
+
+            ActionRow(
+                title = if (serviceRunning) "停止常驻通知" else "常驻通知未运行",
+                subtitle = if (serviceRunning) {
+                    "立即结束前台服务，之后只在应用内控制"
+                } else {
+                    "打开「常驻通知」或重新进入应用即可启动"
+                },
+                onClick = onStopService,
+                enabled = serviceRunning,
             )
 
             SectionTitle("行为")
@@ -221,6 +260,24 @@ private fun SectionTitle(text: String) {
         color = MaterialTheme.colorScheme.primary,
     )
     Spacer(Modifier.height(8.dp))
+}
+
+@Composable
+private fun NoticeCard(text: String) {
+    Spacer(Modifier.height(12.dp))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f))
+            .padding(12.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
 }
 
 @Composable
@@ -383,10 +440,4 @@ private fun SliderRow(
             steps = steps,
         )
     }
-}
-
-/** Box 在 OptionRow 里用到，这里补一个轻量别名避免多引一个 import */
-@Composable
-private fun Box(modifier: Modifier, content: @Composable () -> Unit) {
-    androidx.compose.foundation.layout.Box(modifier = modifier) { content() }
 }

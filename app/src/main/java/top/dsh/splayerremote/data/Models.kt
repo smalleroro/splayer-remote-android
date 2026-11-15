@@ -63,16 +63,18 @@ data class PlaybackStatus(
     val isFinished: Boolean = false,
     val currentIndex: Int = -1,
 ) {
-    /**
-     * 这份状态是在什么时刻拿到的（本地单调时钟，毫秒）。
-     *
-     * 不参与序列化：它是客户端插进去的，服务端没有这个字段。
-     * 用途是补偿网络往返——拿到的 position 是服务端处理请求那一刻的值，
-     * 到我们手里已经过去了半个 RTT，不补的话歌词会系统性延迟。
-     */
-    var fetchedAt: Long = 0L
-
     val isPlaying: Boolean get() = state == "playing"
+}
+
+/**
+ * 一次采样的结果：值 + 拿到它的本地时刻。
+ *
+ * 之前的做法是往 PlaybackStatus 里塞一个 fetchedAt 字段，
+ * 那是把传输层的信息长进了服务端 DTO 里——服务端并没有这个字段，
+ * 而所有消费这个 DTO 的地方都得假装它有意义。包一层干净得多。
+ */
+data class Sample<T>(val value: T, val fetchedAt: Long) {
+    fun map(transform: (T) -> T): Sample<T> = Sample(transform(value), fetchedAt)
 }
 
 /** GET /api/now-playing 的响应 */

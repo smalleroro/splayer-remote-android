@@ -17,17 +17,18 @@ import java.net.Socket
  * 这是最烦的一步。这里直接扫本机所在 /24 网段，
  * 谁在 14558 上回了 SPlayer 的 /api/info，就是它。
  *
- * 代价：一次最多 254 个 TCP 连接尝试，并发 64、超时 250ms，
- * 最坏情况 1 秒左右收敛。只在用户点"自动发现"时才跑。
+ * 调用方（SessionRepository）负责节流：扫码一次不便宜，不能每轮失败都扫。
  */
 object ServerDiscovery {
 
-    private const val PORT = 14558
     private const val CONCURRENCY = 64
     private const val CONNECT_TIMEOUT_MS = 250
 
+    /** 读响应时的上限，防止对面是别的服务时读进大量数据 */
+    private const val MAX_RESPONSE_BYTES = 4 * 1024
+
     /** 探测结果：命中的 http 基址，找不到返回 null */
-    suspend fun discover(port: Int = PORT): String? = withContext(Dispatchers.IO) {
+    suspend fun discover(port: Int = SPlayerApi.DEFAULT_PORT): String? = withContext(Dispatchers.IO) {
         val localIp = findLocalIpv4() ?: return@withContext null
         val prefix = localIp.substringBeforeLast('.')
         val candidates = (1..254).map { "$prefix.$it" }
@@ -50,11 +51,16 @@ object ServerDiscovery {
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
                 socket.soTimeout = CONNECT_TIMEOUT_MS
-                // 直接问 /api/info，能读到 SPlayer-Next 才算命中
                 val request = "GET /api/info HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"
                 socket.getOutputStream().write(request.toByteArray())
-                val response = socket.getInputStream().bufferedReader().use { it.readText() }
-                response.contains("SPlayer", ignoreCase = true)
+                socket.getOutputStream().flush()
+
+                // 读前 4KB 就够判断，不把整段响应读进来
+                val buffer = ByteArray(MAX_RESPONSE_BYTES)
+                val read = socket.getInputStream().read(buffer)
+                if (read <= 0) return false
+                val text = String(buffer, 0, read, Charsets.UTF_8)
+                text.contains("SPlayer", ignoreCase = true)
             }
         } catch (e: Exception) {
             false
@@ -65,9 +71,13 @@ object ServerDiscovery {
     private fun findLocalIpv4(): String? {
         return try {
             NetworkInterface.getNetworkInterfaces()
-                .toList()
+                ?.toList()
+                .orEmpty()
                 .filter { it.isUp && !it.isLoopback }
-                .filter { name -> name.name.lowercase().let { it.startsWith("wlan") || it.startsWith("eth") } }
+                .filter { name ->
+                    val n = name.name.lowercase()
+                    n.startsWith("wlan") || n.startsWith("eth")
+                }
                 .flatMap { it.inetAddresses.toList() }
                 .filterIsInstance<Inet4Address>()
                 .firstOrNull { addr ->

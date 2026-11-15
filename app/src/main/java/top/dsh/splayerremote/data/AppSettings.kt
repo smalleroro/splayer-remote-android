@@ -25,11 +25,11 @@ data class AppSettings(
     // 连接
     val baseUrl: String = SPlayerApi.DEFAULT_BASE_URL,
     /** 轮询间隔毫秒；越小越跟手，越费电 */
-    val pollIntervalMs: Long = 500L,
+    val pollIntervalMs: Long = 1_000L,
     /** 启动时自动尝试连接 */
     val autoConnect: Boolean = true,
-    /** 找不到配置的服务器时自动扫描局域网 */
-    val autoDiscover: Boolean = false,
+    /** 连不上时自动扫描局域网 */
+    val autoDiscover: Boolean = true,
 
     // 外观
     val themeMode: ThemeMode = ThemeMode.System,
@@ -41,35 +41,40 @@ data class AppSettings(
     val autoScrollLyrics: Boolean = true,
 
     // 通知
+    /** 关掉后不启动前台服务，只在应用前台时轮询 */
     val persistentNotification: Boolean = true,
+    /** 通知里是否显示专辑封面 */
     val notificationCover: Boolean = true,
 
     // 行为
+    /** 退出应用时是否一并停掉前台服务 */
     val stopServiceOnExit: Boolean = false,
 )
 
 /**
- * 设置的读写与广播。
+ * 可观察的设置仓库。
  *
- * 用 SharedPreferences 存盘（键名与前台服务共用），
- * 再用 StateFlow 把变更推给 Compose 和 Service。
- * 设置改动要同时影响 UI 与常驻通知，所以集中在这里管理。
+ * 之前的问题：前台服务只在 onCreate 读一次 SharedPreferences，
+ * 于是改完地址通知栏还连着旧机器；三个开关更是没有任何消费方。
+ * 现在统一从这里读，改任何一个值都会推给订阅者（UI 与服务）。
  */
 class SettingsRepository(context: Context) {
 
     private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences(SPlayerApi.PREFS_NAME, Context.MODE_PRIVATE)
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _settings = MutableStateFlow(load())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
+
+    val current: AppSettings get() = _settings.value
 
     private fun load(): AppSettings = AppSettings(
         baseUrl = SPlayerApi.normalizeBaseUrl(
             prefs.getString(KEY_BASE_URL, SPlayerApi.DEFAULT_BASE_URL) ?: SPlayerApi.DEFAULT_BASE_URL
         ),
-        pollIntervalMs = prefs.getLong(KEY_POLL_INTERVAL, 500L),
+        pollIntervalMs = prefs.getLong(KEY_POLL_INTERVAL, 1_000L),
         autoConnect = prefs.getBoolean(KEY_AUTO_CONNECT, true),
-        autoDiscover = prefs.getBoolean(KEY_AUTO_DISCOVER, false),
+        autoDiscover = prefs.getBoolean(KEY_AUTO_DISCOVER, true),
         themeMode = prefs.getString(KEY_THEME, ThemeMode.System.name)
             ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.System,
         coverSize = prefs.getString(KEY_COVER_SIZE, CoverSize.Medium.name)
@@ -86,25 +91,33 @@ class SettingsRepository(context: Context) {
     /** 批量更新：传一个修改函数，写盘并广播 */
     fun update(transform: (AppSettings) -> AppSettings) {
         val next = transform(_settings.value)
-        val editor = prefs.edit()
-        editor.putString(KEY_BASE_URL, next.baseUrl)
-        editor.putLong(KEY_POLL_INTERVAL, next.pollIntervalMs)
-        editor.putBoolean(KEY_AUTO_CONNECT, next.autoConnect)
-        editor.putBoolean(KEY_AUTO_DISCOVER, next.autoDiscover)
-        editor.putString(KEY_THEME, next.themeMode.name)
-        editor.putString(KEY_COVER_SIZE, next.coverSize.name)
-        editor.putBoolean(KEY_SHOW_TRANSLATION, next.showTranslation)
-        editor.putString(KEY_LYRIC_FONT, next.lyricFontSize.name)
-        editor.putBoolean(KEY_AUTO_SCROLL, next.autoScrollLyrics)
-        editor.putBoolean(KEY_PERSISTENT_NOTIFICATION, next.persistentNotification)
-        editor.putBoolean(KEY_NOTIFICATION_COVER, next.notificationCover)
-        editor.putBoolean(KEY_STOP_ON_EXIT, next.stopServiceOnExit)
-        editor.apply()
+        prefs.edit()
+            .putString(KEY_BASE_URL, next.baseUrl)
+            .putLong(KEY_POLL_INTERVAL, next.pollIntervalMs)
+            .putBoolean(KEY_AUTO_CONNECT, next.autoConnect)
+            .putBoolean(KEY_AUTO_DISCOVER, next.autoDiscover)
+            .putString(KEY_THEME, next.themeMode.name)
+            .putString(KEY_COVER_SIZE, next.coverSize.name)
+            .putBoolean(KEY_SHOW_TRANSLATION, next.showTranslation)
+            .putString(KEY_LYRIC_FONT, next.lyricFontSize.name)
+            .putBoolean(KEY_AUTO_SCROLL, next.autoScrollLyrics)
+            .putBoolean(KEY_PERSISTENT_NOTIFICATION, next.persistentNotification)
+            .putBoolean(KEY_NOTIFICATION_COVER, next.notificationCover)
+            .putBoolean(KEY_STOP_ON_EXIT, next.stopServiceOnExit)
+            .apply()
 
         _settings.value = next
     }
 
+    /** 只改服务器地址，顺带规范化——所有写入路径都走这里 */
+    fun setBaseUrl(raw: String) {
+        val normalized = SPlayerApi.normalizeBaseUrl(raw)
+        update { it.copy(baseUrl = normalized) }
+    }
+
     companion object {
+        const val PREFS_NAME = "splayer_remote"
+
         // base_url 这个键沿用旧版本的名字，避免升级后用户配置丢失
         private const val KEY_BASE_URL = "base_url"
         private const val KEY_POLL_INTERVAL = "poll_interval_ms"
