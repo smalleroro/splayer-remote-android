@@ -55,7 +55,7 @@ Kotlin + Jetpack Compose 编写，通过 SPlayer 内置的外部 HTTP API 通信
 
 ## 下载
 
-[最新发行版](https://github.com/smalleroro/splayer-remote-android/releases/latest) / [v1.1.0 APK](https://github.com/smalleroro/splayer-remote-android/releases/download/v1.1.0/splayer-remote-1.1.0.apk)
+[最新发行版](https://github.com/smalleroro/splayer-remote-android/releases/latest) / [v1.1.1 APK](https://github.com/smalleroro/splayer-remote-android/releases/download/v1.1.1/splayer-remote-1.1.1.apk)
 
 ## 使用
 
