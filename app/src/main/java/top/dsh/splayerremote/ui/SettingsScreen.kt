@@ -238,7 +238,7 @@ private fun ServerField(current: String, onApply: (String) -> Unit) {
             onValueChange = { text = it },
             modifier = Modifier.weight(1f),
             label = { Text("SPlayer 地址", style = MaterialTheme.typography.labelSmall) },
-            placeholder = { Text("192.168.1.10:14558") },
+            placeholder = { Text("192.168.1.100:14558") },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodySmall,
             shape = RoundedCornerShape(10.dp),

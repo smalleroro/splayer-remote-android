@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,6 +8,18 @@ plugins {
     // 只加 runtime 依赖是编译不过的，必须同时应用这个插件。
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+/**
+ * 从 keystore.properties 读取签名信息。
+ *
+ * 该文件不进版本库（见 .gitignore）：它含密钥口令，属于本机机密。
+ * 文件不存在时 release 构建退化为未签名，方便别人 clone 后直接跑 assembleDebug。
+ */
+val keystoreProps: Properties? = file("../keystore.properties")
+    .takeIf { it.exists() }
+    ?.let { file ->
+        Properties().apply { file.inputStream().use { load(it) } }
+    }
 
 android {
     namespace = "top.dsh.splayerremote"
@@ -19,10 +33,23 @@ android {
         versionName = "1.0.0"
     }
 
+    signingConfigs {
+        if (keystoreProps != null) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // 没有密钥时不强制签名，避免 clone 的人构建失败
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
